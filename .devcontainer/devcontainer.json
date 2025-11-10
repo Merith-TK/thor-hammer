@@ -1,0 +1,92 @@
+{
+  "name": "Thor Hammer - Android Linux Boot Development",
+  "image": "git.merith.xyz/oci/archlinux",
+  
+  // Note: Using custom Arch Linux image, features are installed via scripts
+  // instead of the standard devcontainer features (which are Ubuntu/Debian only)
+  
+  // Configure tool-specific properties
+  "customizations": {
+    "vscode": {
+      // Extensions to install
+      "extensions": [
+        "redhat.vscode-yaml",
+        "yzhang.markdown-all-in-one",
+        "ms-vscode.hexeditor",
+        "ms-vscode-remote.remote-containers",
+        "streetsidesoftware.code-spell-checker",
+        "natqe.reload",
+        "golang.go"
+      ],
+      
+      // VS Code settings
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "/bin/bash",
+            "args": ["-l"]
+          }
+        },
+        "files.associations": {
+          "*.uboot": "shellscript",
+          "*.cmd": "shellscript",
+          "*.dts": "c",
+          "*.dtsi": "c"
+        },
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "C_Cpp.default.compilerPath": "/usr/bin/aarch64-linux-gnu-gcc",
+        "C_Cpp.default.intelliSenseMode": "gcc-arm64",
+        "python.defaultInterpreterPath": "/usr/bin/python3"
+      }
+    }
+  },
+  
+  // Container environment variables
+  "containerEnv": {
+    "THOR_HAMMER_DEV": "true",
+    "CROSS_COMPILE": "aarch64-linux-gnu-",
+    "ARCH": "arm64",
+    "KBUILD_BUILD_USER": "thor-hammer",
+    "KBUILD_BUILD_HOST": "devcontainer"
+  },
+  
+  // Mounts for persistent data
+  "mounts": [
+    "source=thor-hammer-cache,target=/home/user/.cache,type=volume",
+    "source=thor-hammer-ccache,target=/home/user/.ccache,type=volume"
+  ],
+  
+  // Port forwards for development servers
+  "forwardPorts": [8080, 3000, 8000],
+  
+  // Use 'onCreateCommand' to run commands when creating the container
+  "onCreateCommand": ".devcontainer/on-create.sh",
+  
+  // Use 'postCreateCommand' to run commands after the container is created
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  
+  // Use 'postStartCommand' to run commands after the container starts
+  "postStartCommand": "echo '🔨 Thor Hammer Dev Container Ready!' && neofetch",
+  
+  // Container user configuration
+  "remoteUser": "user",
+  "workspaceFolder": "/workspaces/.thor-hammer",
+  
+  // Container resource limits
+  "hostRequirements": {
+    "memory": "4gb",
+    "cpus": 2
+  },
+  
+  // Development container capabilities
+  "capAdd": ["SYS_PTRACE", "SYS_ADMIN", "MKNOD"],
+  "securityOpt": ["seccomp=unconfined"],
+  
+  // Allow device access for loop devices and disk operations
+  "runArgs": ["--privileged", "--device=/dev/loop-control", "--device=/dev/mapper/control"],
+  
+  // Shutdown action
+  "shutdownAction": "stopContainer"
+}

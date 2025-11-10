@@ -1,0 +1,66 @@
+# Thor Hammer 🔨
+
+Builds bootable ARM64 disk images from rootfs tarballs. Built for the AYN Thor but works with any ARM64 device.
+
+## What It Does
+
+Takes a rootfs tarball (Arch Linux ARM, Alpine, Debian, etc.) and creates a bootable disk image with:
+- GPT partitioning (512MB boot + 3.5GB root)
+- GRUB bootloader
+- Your chosen OS installed and configured
+
+## Requirements
+
+- VS Code with Dev Containers extension (or Docker)
+- 4GB+ free disk space
+
+## Usage
+
+### Build an Image
+
+```bash
+# Open project in VS Code Dev Container
+
+# Build
+sudo ./scripts/build.sh -r assets/ArchLinuxARM-aarch64-latest.tar.gz
+
+# Output: build/thor-hammer.img
+```
+
+### Flash to SD Card
+
+```bash
+sudo dd if=build/thor-hammer.img of=/dev/sdX bs=4M status=progress
+```
+
+**Default login:** `thor` / `thor-hammer` (change immediately!)
+
+### Build Options
+
+```bash
+./scripts/build.sh -r <rootfs> [-s setup-script] [-n output-name]
+```
+
+## Useful Scripts
+
+```bash
+# Mount image to inspect files
+sudo ./scripts/mount-image.sh
+# Files at: /tmp/thor-mount/boot/ and /tmp/thor-mount/root/
+sudo ./scripts/unmount-image.sh
+
+# Chroot into image (modify without booting)
+sudo ./scripts/chroot-image.sh
+```
+
+## Supported Distros
+
+- ✅ Arch Linux ARM (working)
+- 🚧 Alpine, Debian (in progress)
+
+## Notes
+
+- Boot partition is FAT32 with GRUB and kernel files
+- Root partition is ext4 with full OS
+- Images are built using QEMU user-mode emulation
+- Setup scripts run inside chroot to configure the system

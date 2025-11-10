@@ -1,0 +1,65 @@
+# Thor Hammer Project - Ignore patterns
+
+# Build outputs
+out/*.img
+out/*.scr
+out/rootfs/
+*.o
+*.so
+*.a
+*.img
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# IDE/Editor files
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+.vscode/c_cpp_properties.json
+.idea/
+*.sublime-*
+
+# Dev container volumes and cache
+.devcontainer/.cache/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Large asset files (uncomment if you don't want to track them)
+assets/*.tar.gz
+# assets/*.img
+# assets/*.iso
+
+# Device-specific configs (keep templates, ignore actual configs)
+configs/device_*.conf
+!configs/device_template.conf
+
+# Extracted rootfs directories
+rootfs/
+sysroot/
+
+# Cross-compilation toolchain
+toolchain/
+cross-*/
+
+# Downloaded kernels and sources
+linux-*/
+u-boot-*/
+*.tar.xz
+*.tar.bz2
