@@ -21,6 +21,7 @@ sudo pacman -S --noconfirm \
     dosfstools \
     e2fsprogs \
     parted \
+    pcre2 \
     multipath-tools \
     qemu-user-static \
     qemu-system-aarch64 \
