@@ -44,6 +44,14 @@ sudo dd if=build/thor-hammer.img of=/dev/sdX bs=4M status=progress
 ## Useful Scripts
 
 ```bash
+# Test image in QEMU (console mode)
+./scripts/start-qemu-console.sh
+# Exit: Ctrl+A then X
+
+# Test image in QEMU (GUI mode)
+./scripts/start-qemu-gui.sh
+# Exit: Ctrl+Alt+Q or close window
+
 # Mount image to inspect files
 sudo ./scripts/mount-image.sh
 # Files at: /tmp/thor-mount/boot/ and /tmp/thor-mount/root/
