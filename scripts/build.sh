@@ -86,7 +86,29 @@ log "Setup Script: ${SETUP_SCRIPT}"
 log "Device Config: ${DEVICE_CONFIG}"
 log "Output Image: ${IMAGE_NAME}"
 
-# Create working directory
+# Purge and recreate working directory to avoid conflicts
+log "Purging build directory to ensure clean build..."
+# Unmount any leftover mounts from previous builds
+if [ -d "${WORKDIR}/rootfs" ]; then
+    sudo umount "${WORKDIR}/rootfs/proc" 2>/dev/null || true
+    sudo umount "${WORKDIR}/rootfs/sys" 2>/dev/null || true
+    sudo umount "${WORKDIR}/rootfs/dev/pts" 2>/dev/null || true
+    sudo umount "${WORKDIR}/rootfs/dev/shm" 2>/dev/null || true
+    sudo umount "${WORKDIR}/rootfs/dev/mqueue" 2>/dev/null || true
+    sudo umount "${WORKDIR}/rootfs/dev" 2>/dev/null || true
+    sudo umount "${WORKDIR}/rootfs/boot" 2>/dev/null || true
+    sudo umount "${WORKDIR}/rootfs" 2>/dev/null || true
+fi
+# Clean up any leftover loop devices and kpartx mappings
+if [ -f "${WORKDIR}/${IMAGE_NAME}" ]; then
+    EXISTING_LOOP=$(sudo losetup -j "${WORKDIR}/${IMAGE_NAME}" | cut -d: -f1)
+    if [ -n "$EXISTING_LOOP" ]; then
+        log "Cleaning up existing loop device: ${EXISTING_LOOP}"
+        sudo kpartx -d "${EXISTING_LOOP}" 2>/dev/null || true
+        sudo losetup -d "${EXISTING_LOOP}" 2>/dev/null || true
+    fi
+fi
+rm -rf "${WORKDIR}"
 mkdir -p "${WORKDIR}"
 
 # 1. Download rootfs if URL is provided
@@ -143,6 +165,21 @@ sudo mount "${BOOT_PARTITION}" "${MOUNT_DIR}/boot"
 # 6. Extract rootfs
 log "Extracting rootfs to the root partition..."
 sudo tar -xzf "${ROOTFS_PATH}" -C "${MOUNT_DIR}"
+
+# 6.5. Generate fstab with UUIDs
+log "Generating /etc/fstab with UUIDs..."
+BOOT_UUID=$(sudo blkid -s UUID -o value "${BOOT_PARTITION}")
+ROOT_UUID=$(sudo blkid -s UUID -o value "${ROOT_PARTITION}")
+
+sudo tee "${MOUNT_DIR}/etc/fstab" > /dev/null << EOF
+# /etc/fstab: static file system information
+#
+# <file system>                           <mount point>  <type>  <options>         <dump> <pass>
+UUID=${ROOT_UUID}                         /              ext4    defaults,noatime  0      1
+UUID=${BOOT_UUID}                         /boot          vfat    defaults,noatime  0      2
+EOF
+
+log "fstab created with boot UUID=${BOOT_UUID} and root UUID=${ROOT_UUID}"
 
 # 7. Run setup script in QEMU
 log "Preparing to run setup script in QEMU..."
