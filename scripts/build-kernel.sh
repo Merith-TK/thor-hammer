@@ -14,12 +14,14 @@ CROSS_COMPILE=aarch64-linux-gnu-
 BUILD_KERNEL=true
 BUILD_DTB=true
 CLEAN_BUILD=false
+FORCE_REBUILD=false
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --skip-kernel) BUILD_KERNEL=false ;;
         --skip-dtb) BUILD_DTB=false ;;
         --clean) CLEAN_BUILD=true ;;
+        --rebuild) FORCE_REBUILD=true ;;
         -h|--help)
             echo "Usage: $0 [options]"
             echo ""
@@ -27,6 +29,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "  --skip-kernel    Skip kernel build, only build DTB"
             echo "  --skip-dtb       Skip DTB build, only build kernel"
             echo "  --clean          Clean build artifacts before building"
+            echo "  --rebuild        Force rebuild even if kernel/DTB already exist"
             echo "  -h, --help       Show this help message"
             exit 0
             ;;
@@ -40,6 +43,28 @@ if [ ! -d "$KERNEL_SOURCE" ]; then
     echo "Error: Kernel source not found at $KERNEL_SOURCE"
     echo "Clone it first: git clone --depth=1 https://github.com/AYNTechnologies/linux.git /tmp/thor-kernel"
     exit 1
+fi
+
+# Check if kernel/DTB already exist
+if [ "$FORCE_REBUILD" = false ]; then
+    if [ "$BUILD_KERNEL" = true ] && [ -f "$OUTPUT_DIR/KERNEL" ]; then
+        echo "✅ Kernel already exists at $OUTPUT_DIR/KERNEL"
+        echo "   Use --rebuild to force rebuild"
+        BUILD_KERNEL=false
+    fi
+    
+    if [ "$BUILD_DTB" = true ] && [ -f "$OUTPUT_DIR/${DTB_NAME}.dtb" ]; then
+        echo "✅ DTB already exists at $OUTPUT_DIR/${DTB_NAME}.dtb"
+        echo "   Use --rebuild to force rebuild"
+        BUILD_DTB=false
+    fi
+    
+    # Exit early if nothing needs to be built
+    if [ "$BUILD_KERNEL" = false ] && [ "$BUILD_DTB" = false ]; then
+        echo ""
+        echo "🎉 All artifacts already exist. Nothing to build!"
+        exit 0
+    fi
 fi
 
 echo "🔨 Building AYN Linux Kernel for ARM64..."

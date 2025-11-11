@@ -16,6 +16,8 @@ IMAGE_NAME="thor-hammer.img"
 IMAGE_SIZE="4G"
 SETUP_SCRIPT="scripts/setup-archlinux.sh"
 WORKDIR="build"
+USE_AYN_KERNEL=false
+KERNEL_FILE="KERNEL"
 
 # --- Functions ---
 
@@ -26,8 +28,8 @@ usage() {
     echo "Options:"
     echo "  -r, --rootfs <path|url>   Path or URL to the rootfs tarball (required)."
     echo "  -s, --setup-script <path> Path to the setup script (default: ${SETUP_SCRIPT})."
-    echo "  -c, --config <path>       Path to the device config file (default: ${DEVICE_CONFIG})."
     echo "  -n, --name <name>         Output image name (default: ${IMAGE_NAME})."
+    echo "  --use-ayn-kernel          Build and use AYN Linux kernel"
     echo "  -h, --help                Display this help message."
     exit 1
 }
@@ -65,8 +67,8 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         -r|--rootfs) ROOTFS_PATH="$2"; shift ;;
         -s|--setup-script) SETUP_SCRIPT="$2"; shift ;;
-        -c|--config) DEVICE_CONFIG="$2"; shift ;;
         -n|--name) IMAGE_NAME="$2"; shift ;;
+        --use-ayn-kernel) USE_AYN_KERNEL=true ;;
         -h|--help) usage ;;
         *) echo "Unknown parameter passed: $1"; usage ;;
     esac
@@ -77,6 +79,37 @@ done
 if [ -z "${ROOTFS_PATH}" ]; then
     echo "Error: Rootfs path or URL is required."
     usage
+fi
+
+log "Starting Thor Hammer build process..."
+log "Rootfs: ${ROOTFS_PATH}"
+log "Setup Script: ${SETUP_SCRIPT}"
+log "Output Image: ${IMAGE_NAME}"
+log "Use AYN Kernel: ${USE_AYN_KERNEL}"
+
+# --- 1. Build AYN Kernel if requested ---
+if [ "${USE_AYN_KERNEL}" = true ]; then
+    log "Building AYN Linux kernel..."
+    if [ ! -f "scripts/build-kernel.sh" ]; then
+        error "build-kernel.sh not found in scripts/"
+    fi
+    bash scripts/build-kernel.sh
+    if [ $? -ne 0 ]; then
+        error "Kernel build failed"
+    fi
+fi
+
+# --- 2. Check for DTB and build if missing ---
+DTB_FILE="assets/qcs8550-ayn-thor.dtb"
+if [ ! -f "${DTB_FILE}" ]; then
+    log "Device tree blob not found, building it..."
+    if [ ! -d "/tmp/thor-kernel" ]; then
+        error "Kernel source not found at /tmp/thor-kernel. Cannot build DTB."
+    fi
+    bash scripts/build-kernel.sh --skip-kernel
+    if [ $? -ne 0 ]; then
+        error "DTB build failed"
+    fi
 fi
 
 log "Starting Thor Hammer build process..."
@@ -239,8 +272,11 @@ log "Setup script finished."
 # 7.5. Install custom GRUB config if available
 if [ -f "assets/custom-grub.cfg" ]; then
     log "Installing custom GRUB configuration..."
-    sudo cp "assets/custom-grub.cfg" "${MOUNT_DIR}/boot/grub/grub.cfg"
-    log "Custom GRUB config installed"
+    # Replace {KERNELFILE} placeholder with actual kernel filename
+    sudo cp "assets/custom-grub.cfg" "${MOUNT_DIR}/boot/grub/grub.cfg.tmp"
+    sudo sed -i "s/{KERNELFILE}/${KERNEL_FILE}/g" "${MOUNT_DIR}/boot/grub/grub.cfg.tmp"
+    sudo mv "${MOUNT_DIR}/boot/grub/grub.cfg.tmp" "${MOUNT_DIR}/boot/grub/grub.cfg"
+    log "Custom GRUB config installed with kernel: ${KERNEL_FILE}"
 fi
 
 # 8. Unmount and cleanup
