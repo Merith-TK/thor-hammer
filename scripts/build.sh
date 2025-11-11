@@ -16,7 +16,6 @@ IMAGE_NAME="thor-hammer.img"
 IMAGE_SIZE="4G"
 SETUP_SCRIPT="scripts/setup-archlinux.sh"
 WORKDIR="build"
-DEVICE_CONFIG="configs/ayn-odin.conf"
 
 # --- Functions ---
 
@@ -148,8 +147,8 @@ sleep 1
 BOOT_PARTITION="/dev/mapper/$(basename ${LOOP_DEVICE})p1"
 ROOT_PARTITION="/dev/mapper/$(basename ${LOOP_DEVICE})p2"
 
-sudo mkfs.vfat -F32 -n THOR-BOOT "${BOOT_PARTITION}"
-sudo mkfs.ext4 -L THOR-ROOT "${ROOT_PARTITION}"
+sudo mkfs.vfat -F32 -n THORBOOT "${BOOT_PARTITION}"
+sudo mkfs.ext4 -L THORROOT "${ROOT_PARTITION}"
 
 # 5. Mount root partition
 log "Mounting root partition..."
@@ -166,20 +165,36 @@ sudo mount "${BOOT_PARTITION}" "${MOUNT_DIR}/boot"
 log "Extracting rootfs to the root partition..."
 sudo tar -xzf "${ROOTFS_PATH}" -C "${MOUNT_DIR}"
 
-# 6.5. Generate fstab with UUIDs
-log "Generating /etc/fstab with UUIDs..."
-BOOT_UUID=$(sudo blkid -s UUID -o value "${BOOT_PARTITION}")
-ROOT_UUID=$(sudo blkid -s UUID -o value "${ROOT_PARTITION}")
+# 6.5. Generate fstab with LABELs
+log "Generating /etc/fstab with partition labels..."
 
 sudo tee "${MOUNT_DIR}/etc/fstab" > /dev/null << EOF
 # /etc/fstab: static file system information
-#
-# <file system>                           <mount point>  <type>  <options>         <dump> <pass>
-UUID=${ROOT_UUID}                         /              ext4    defaults,noatime  0      1
-UUID=${BOOT_UUID}                         /boot          vfat    defaults,noatime  0      2
+LABEL=THORROOT    /        ext4    defaults,noatime    0    1
+LABEL=THORBOOT    /boot    vfat    defaults,noatime    0    2
 EOF
 
-log "fstab created with boot UUID=${BOOT_UUID} and root UUID=${ROOT_UUID}"
+log "fstab created with THORBOOT and THORROOT labels"
+
+# 6.6. Copy custom kernel, DTB, and GRUB config
+log "Installing custom kernel and boot files..."
+
+# Check for custom kernel
+if [ -f "assets/KERNEL" ]; then
+    log "  -> Installing custom kernel..."
+    sudo cp "assets/KERNEL" "${MOUNT_DIR}/boot/KERNEL"
+    sudo chmod +x "${MOUNT_DIR}/boot/KERNEL"
+else
+    log "  -> No custom kernel found, will use distribution kernel"
+fi
+
+# Check for device tree blob
+if [ -f "assets/qcs8550-ayn-thor.dtb" ]; then
+    log "  -> Installing device tree blob..."
+    sudo cp "assets/qcs8550-ayn-thor.dtb" "${MOUNT_DIR}/boot/qcs8550-ayn-thor.dtb"
+else
+    log "  -> No DTB found in assets directory"
+fi
 
 # 7. Run setup script in QEMU
 log "Preparing to run setup script in QEMU..."
@@ -220,6 +235,13 @@ fi
 sudo chroot "${MOUNT_DIR}" /bin/bash /setup.sh
 
 log "Setup script finished."
+
+# 7.5. Install custom GRUB config if available
+if [ -f "assets/custom-grub.cfg" ]; then
+    log "Installing custom GRUB configuration..."
+    sudo cp "assets/custom-grub.cfg" "${MOUNT_DIR}/boot/grub/grub.cfg"
+    log "Custom GRUB config installed"
+fi
 
 # 8. Unmount and cleanup
 log "Cleaning up..."

@@ -6,8 +6,34 @@ set -e
 
 KERNEL_SOURCE="/tmp/thor-kernel"
 OUTPUT_DIR="/workspaces/.thor-hammer/assets"
+DTB_NAME="qcs8550-ayn-thor"
 ARCH=arm64
 CROSS_COMPILE=aarch64-linux-gnu-
+
+# Parse command line arguments
+BUILD_KERNEL=true
+BUILD_DTB=true
+CLEAN_BUILD=false
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --skip-kernel) BUILD_KERNEL=false ;;
+        --skip-dtb) BUILD_DTB=false ;;
+        --clean) CLEAN_BUILD=true ;;
+        -h|--help)
+            echo "Usage: $0 [options]"
+            echo ""
+            echo "Options:"
+            echo "  --skip-kernel    Skip kernel build, only build DTB"
+            echo "  --skip-dtb       Skip DTB build, only build kernel"
+            echo "  --clean          Clean build artifacts before building"
+            echo "  -h, --help       Show this help message"
+            exit 0
+            ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+    shift
+done
 
 # Check if kernel source exists
 if [ ! -d "$KERNEL_SOURCE" ]; then
@@ -24,38 +50,79 @@ echo ""
 # Navigate to kernel source
 cd "$KERNEL_SOURCE"
 
-# Clean previous builds
-echo "🧹 Cleaning previous build artifacts..."
-make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE clean
-
-# Configure kernel
-echo "⚙️  Configuring kernel with defconfig..."
-make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE defconfig
-
-# Build kernel image
-echo "🏗️  Building kernel (this will take a while)..."
-make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE -j$(nproc) Image
-
-# Check if build succeeded
-if [ ! -f "arch/arm64/boot/Image" ]; then
-    echo "❌ Kernel build failed!"
-    exit 1
+# Clean previous builds if requested
+if [ "$CLEAN_BUILD" = true ]; then
+    echo "🧹 Cleaning previous build artifacts..."
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE clean
+else
+    echo "♻️  Using incremental build (use --clean to force clean build)..."
 fi
 
-# Copy kernel to assets
-echo "📦 Copying kernel to assets..."
-cp arch/arm64/boot/Image "$OUTPUT_DIR/THOR-KERNEL"
-chmod +x "$OUTPUT_DIR/THOR-KERNEL"
+# Configure kernel (only if .config doesn't exist or clean was requested)
+if [ ! -f ".config" ] || [ "$CLEAN_BUILD" = true ]; then
+    echo "⚙️  Configuring kernel with defconfig..."
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE defconfig
+else
+    echo "⚙️  Using existing kernel configuration..."
+fi
+
+# Build kernel image
+if [ "$BUILD_KERNEL" = true ]; then
+    echo "🏗️  Building kernel (this will take a while)..."
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE -j$(nproc) Image
+    
+    # Check if build succeeded
+    if [ ! -f "arch/arm64/boot/Image" ]; then
+        echo "❌ Kernel build failed!"
+        exit 1
+    fi
+else
+    echo "⏭️  Skipping kernel build..."
+fi
+
+# Build device tree blob
+if [ "$BUILD_DTB" = true ]; then
+    echo "🌳 Building device tree blob for ${DTB_NAME}..."
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE -j$(nproc) dtbs
+    
+    # Check if build succeeded
+    if [ ! -f "arch/arm64/boot/dts/qcom/${DTB_NAME}.dtb" ]; then
+        echo "❌ Device tree build failed!"
+        exit 1
+    fi
+else
+    echo "⏭️  Skipping DTB build..."
+fi
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+
+# Copy kernel and DTB to assets folder
+echo "📦 Copying built artifacts to assets folder..."
+if [ "$BUILD_KERNEL" = true ]; then
+    sudo cp arch/arm64/boot/Image "$OUTPUT_DIR/KERNEL"
+    sudo chmod +x "$OUTPUT_DIR/KERNEL"
+fi
+
+if [ "$BUILD_DTB" = true ]; then
+    sudo cp "arch/arm64/boot/dts/qcom/${DTB_NAME}.dtb" "$OUTPUT_DIR/${DTB_NAME}.dtb"
+fi
 
 # Get kernel version
 KERNEL_VERSION=$(make kernelrelease)
 
 echo ""
-echo "✅ Kernel build completed successfully!"
+echo "✅ Build completed successfully!"
 echo "📄 Kernel version: $KERNEL_VERSION"
-echo "📍 Kernel location: $OUTPUT_DIR/KERNEL"
-echo "💾 Size: $(du -h $OUTPUT_DIR/KERNEL | cut -f1)"
+if [ "$BUILD_KERNEL" = true ]; then
+    echo "📍 Kernel location: $OUTPUT_DIR/KERNEL"
+    echo "� Kernel size: $(du -h $OUTPUT_DIR/KERNEL | cut -f1)"
+fi
+if [ "$BUILD_DTB" = true ]; then
+    echo "� DTB location: $OUTPUT_DIR/${DTB_NAME}.dtb"
+    echo "�💾 DTB size: $(du -h $OUTPUT_DIR/${DTB_NAME}.dtb | cut -f1)"
+fi
 echo ""
 echo "Next steps:"
-echo "  1. Update the image with the new kernel"
+echo "  1. Update the image with the new kernel and DTB"
 echo "  2. Test boot with: sudo ./scripts/start-qemu-console.sh"
