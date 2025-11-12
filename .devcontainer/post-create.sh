@@ -28,7 +28,10 @@ sudo pacman -S --noconfirm \
     qemu-img \
     util-linux \
     tar \
-    rsync
+    rsync \
+    gtk3 \
+    vte3 \
+    libvirt
 
 # Install AUR helper packages for cross-compilation
 echo "📥 Installing cross-compilation toolchain from AUR..."

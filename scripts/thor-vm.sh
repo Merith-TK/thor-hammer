@@ -8,7 +8,7 @@
 set -e
 
 DEFAULT_IMAGE="build/thor-hammer.img"
-IMAGE_FILE="${1:-$DEFAULT_IMAGE}"
+IMAGE_FILE=""
 MEMORY="2048"
 CPUS="2"
 GUI_MODE=false
@@ -82,6 +82,8 @@ set -- "${POSITIONAL_ARGS[@]}"
 # Get image path from positional args or use default
 if [ -n "$1" ]; then
     IMAGE_FILE="$1"
+else
+    IMAGE_FILE="$DEFAULT_IMAGE"
 fi
 
 # Check if image exists
@@ -119,7 +121,7 @@ QEMU_CMD=(
 
 # Add display options
 if [ "$GUI_MODE" = true ]; then
-    QEMU_CMD+=(-display gtk)
+    QEMU_CMD+=(-device virtio-gpu-pci -device virtio-keyboard-pci -device virtio-mouse-pci -display sdl,gl=off -vga none)
 else
     QEMU_CMD+=(-nographic)
 fi

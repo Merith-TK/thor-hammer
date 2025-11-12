@@ -12,7 +12,7 @@ set -e
 ROOTFS_PATH=""
 IMAGE_NAME="thor-hammer.img"
 IMAGE_SIZE="4G"
-SETUP_SCRIPT="scripts/setup-archlinux.sh"
+SETUP_SCRIPT=""
 WORKDIR="build"
 KERNEL_FILE="KERNEL"
 
@@ -327,15 +327,17 @@ EOF
     sudo mount --bind /dev "${MOUNT_DIR}/dev"
 
     # Copy setup script into the chroot
-    log "Copying setup script into chroot environment..."
-    sudo cp "${SETUP_SCRIPT}" "${MOUNT_DIR}/setup.sh"
-    sudo chmod +x "${MOUNT_DIR}/setup.sh"
+    if [ -n "${SETUP_SCRIPT}" ]; then
+        log "Copying setup script into chroot environment..."
+        sudo cp "${SETUP_SCRIPT}" "${MOUNT_DIR}/setup.sh"
+        sudo chmod +x "${MOUNT_DIR}/setup.sh"
 
-    # Chroot and run the setup script
-    sudo chroot "${MOUNT_DIR}" /bin/bash /setup.sh
+        # Chroot and run the setup script
+        sudo chroot "${MOUNT_DIR}" /bin/bash /setup.sh
 
-    log "Setup script finished."
+        log "Setup script finished."
 
+    fi
     # 7.5. Install custom GRUB config if available
     if [ -f "assets/custom-grub.cfg" ]; then
         log "Installing custom GRUB configuration..."
