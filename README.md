@@ -21,8 +21,11 @@ Takes a rootfs tarball (Arch Linux ARM, Alpine, Debian, etc.) and creates a boot
 ```bash
 # Open project in VS Code Dev Container
 
-# Build
-sudo ./scripts/build.sh -r assets/ArchLinuxARM-aarch64-latest.tar.gz
+# Build with AYN kernel
+sudo thor-build -r assets/ArchLinuxARM-aarch64-latest.tar.gz --use-ayn-kernel
+
+# Or use the direct path
+sudo ./scripts/thor-build.sh -r assets/ArchLinuxARM-aarch64-latest.tar.gz --use-ayn-kernel
 
 # Output: build/thor-hammer.img
 ```
@@ -38,28 +41,37 @@ sudo dd if=build/thor-hammer.img of=/dev/sdX bs=4M status=progress
 ### Build Options
 
 ```bash
-./scripts/build.sh -r <rootfs> [-s setup-script] [-n output-name]
+# Main build command
+thor-build -r <rootfs> [options]
+
+# Common options:
+#   -r, --rootfs <path>      Path to rootfs tarball (required)
+#   -n, --name <name>        Output image name
+#   --use-ayn-kernel         Build AYN Linux kernel
+#   --rebuild-kernel         Force kernel rebuild
+#   --no-image              Build kernel only
+
+# See all options
+thor-build --help
 ```
 
-## Useful Scripts
+## Useful Commands
 
 ```bash
-# Test image in QEMU (console mode)
-./scripts/start-qemu-console.sh
-# Exit: Ctrl+A then X
+# Test image in QEMU
+thor-vm                    # Console mode (Ctrl+A then X to exit)
+thor-vm --gui              # GUI mode
 
-# Test image in QEMU (GUI mode)
-./scripts/start-qemu-gui.sh
-# Exit: Ctrl+Alt+Q or close window
+# Chroot into image (modify without booting)
+sudo thor-chroot
 
 # Mount image to inspect files
 sudo ./scripts/mount-image.sh
 # Files at: /tmp/thor-mount/boot/ and /tmp/thor-mount/root/
 sudo ./scripts/unmount-image.sh
-
-# Chroot into image (modify without booting)
-sudo ./scripts/chroot-image.sh
 ```
+
+For detailed usage, see [QUICKSTART.md](QUICKSTART.md)
 
 ## Supported Distros
 

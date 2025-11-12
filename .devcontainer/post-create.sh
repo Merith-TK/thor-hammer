@@ -61,7 +61,9 @@ alias la='ls -A --color=auto'
 alias l='ls -CF --color=auto'
 alias grep='grep --color=auto'
 alias thor-cd='cd $THOR_HAMMER_ROOT'
-alias thor-build='cd $THOR_HAMMER_ROOT && ./scripts/build.sh'
+alias thor-build='$THOR_HAMMER_ROOT/scripts/thor-build.sh'
+alias thor-chroot='$THOR_HAMMER_ROOT/scripts/thor-chroot.sh'
+alias thor-vm='$THOR_HAMMER_ROOT/scripts/thor-vm.sh'
 alias thor-logs='tail -f $THOR_HAMMER_ROOT/logs/*.log 2>/dev/null || echo "No logs found"'
 
 # Function to check cross-compiler
@@ -86,7 +88,9 @@ thor-status() {
     echo ""
     echo "📋 Available commands:"
     echo "  thor-cd            - Go to workspace root"
-    echo "  thor-build         - Run the main build script"
+    echo "  thor-build         - Build kernel and/or image"
+    echo "  thor-chroot        - Enter chroot in built image"
+    echo "  thor-vm            - Boot image in QEMU"
     echo "  thor-logs          - View development logs"
     echo "  check-crossgcc     - Verify cross-compiler setup"
 }
