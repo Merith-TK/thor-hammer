@@ -31,7 +31,8 @@ sudo pacman -S --noconfirm \
     rsync \
     gtk3 \
     vte3 \
-    libvirt
+    libvirt \
+    arch-install-scripts
 
 # Install AUR helper packages for cross-compilation
 echo "📥 Installing cross-compilation toolchain from AUR..."

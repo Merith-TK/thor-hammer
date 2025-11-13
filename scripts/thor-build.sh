@@ -8,12 +8,16 @@
 
 set -e
 
+# Get script directory for finding other scripts
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # --- Configuration ---
 ROOTFS_PATH=""
 IMAGE_NAME="thor-hammer.img"
 IMAGE_SIZE="4G"
 SETUP_SCRIPT=""
 WORKDIR="build"
+ROOTFS_DIR="build/rootfs"
 KERNEL_FILE="KERNEL"
 
 # Kernel build configuration
@@ -26,6 +30,7 @@ CROSS_COMPILE=aarch64-linux-gnu-
 # Build flags - all opt-in now
 BUILD_KERNEL=false
 BUILD_DTB=false
+BUILD_ROOTFS=false
 BUILD_IMAGE=false
 CLEAN_KERNEL=false
 OVERWRITE=false
@@ -40,17 +45,18 @@ usage() {
     echo "Build Target Options (opt-in, specify what to build):"
     echo "  --kernel                  Build kernel"
     echo "  --dtb                     Build device tree blob"
-    echo "  --image                   Build disk image"
-    echo "  --all                     Build everything (kernel + dtb + image)"
+    echo "  --rootfs                  Build prepared rootfs (extract + setup)"
+    echo "  --image                   Build disk image from prepared rootfs"
+    echo "  --all                     Build everything (kernel + dtb + rootfs + image)"
     echo ""
-    echo "Image Build Options:"
-    echo "  -r, --rootfs <path|url>   Path or URL to the rootfs tarball (required for --image)"
-    echo "  -s, --setup-script <path> Path to the setup script (runs in chroot)"
+    echo "Build Options:"
+    echo "  -r, --rootfs-tar <path>   Path or URL to the rootfs tarball (required for --rootfs)"
+    echo "  -s, --setup-script <path> Path to the setup script (runs in chroot for --rootfs)"
     echo "  -n, --name <name>         Output image name (default: ${IMAGE_NAME})"
     echo ""
     echo "Build Modifiers:"
-    echo "  --overwrite               Overwrite existing artifacts (kernel/dtb/image)"
-    echo "  --clean                   Clean kernel build artifacts before building"
+    echo "  --overwrite               Overwrite existing artifacts"
+    echo "  --clean                   Clean build artifacts before building"
     echo ""
     echo "General Options:"
     echo "  -h, --help                Display this help message"
@@ -206,34 +212,106 @@ build_kernel() {
     cd - > /dev/null
 }
 
+build_rootfs() {
+    log "=== Rootfs Preparation Phase ==="
+    
+    # Check if prepared rootfs already exists
+    if [ -d "${ROOTFS_DIR}" ] && [ "$OVERWRITE" != true ]; then
+        log "✅ Prepared rootfs already exists at ${ROOTFS_DIR}"
+        log "   Use --overwrite to rebuild it"
+        return 0
+    fi
+    
+    # Clean up existing prepared rootfs if overwrite requested
+    if [ -d "${ROOTFS_DIR}" ] && [ "$OVERWRITE" = true ]; then
+        log "Removing existing prepared rootfs..."
+        # Just remove the directory - no need to manually unmount
+        sudo rm -rf "${ROOTFS_DIR}"
+    fi
+    
+    log "Preparing rootfs at ${ROOTFS_DIR}..."
+    log "Rootfs: ${ROOTFS_PATH}"
+    log "Setup Script: ${SETUP_SCRIPT}"
+    
+    # Create rootfs directory
+    mkdir -p "${ROOTFS_DIR}"
+    
+    # Download rootfs if URL is provided
+    download_rootfs
+    
+    # Check for root privileges
+    if [ "$(id -u)" -ne 0 ]; then
+        error "This script requires root privileges for chroot operations."
+    fi
+    
+    # Extract rootfs
+    log "Extracting rootfs to ${ROOTFS_DIR}..."
+    sudo tar -xpf "${ROOTFS_PATH}" -C "${ROOTFS_DIR}"
+    
+    # Generate fstab (for reference, will be copied to image later)
+    log "Generating fstab..."
+    sudo tee "${ROOTFS_DIR}/etc/fstab" > /dev/null << 'EOF'
+# /etc/fstab: static file system information
+#
+# <file system>       <mount point>  <type>  <options>              <dump> <pass>
+LABEL=THORROOT        /              ext4    defaults,noatime       0      1
+LABEL=THORBOOT        /boot          vfat    defaults,noatime       0      2
+EOF
+    
+    # Run setup script if provided using thor-chroot
+    if [ -n "${SETUP_SCRIPT}" ]; then
+        log "Running setup script in chroot via thor-chroot..."
+        
+        # Copy setup script into chroot
+        sudo cp "${SETUP_SCRIPT}" "${ROOTFS_DIR}/setup.sh"
+        sudo chmod +x "${ROOTFS_DIR}/setup.sh"
+        
+        # Run setup script using thor-chroot (handles ARM64 setup and mounting)
+        "${SCRIPT_DIR}/thor-chroot.sh" -r "${ROOTFS_DIR}" /bin/bash /setup.sh
+        
+        log "Setup script finished."
+        
+        # Cleanup
+        sudo rm "${ROOTFS_DIR}/setup.sh"
+    fi
+    
+    log ""
+    log "✅ Rootfs preparation completed successfully!"
+    log "📁 Prepared rootfs location: ${ROOTFS_DIR}"
+    log "💾 Rootfs size: $(sudo du -sh ${ROOTFS_DIR} | cut -f1)"
+    log ""
+    log "Next steps:"
+    log "  1. Build image: thor-build --image"
+    log "  2. Modify rootfs: thor-chroot"
+    log ""
+}
+
 build_image() {
     log "=== Image Build Phase ==="
     
     # Check for required files
     DTB_FILE="assets/${DTB_NAME}.dtb"
     if [ ! -f "${DTB_FILE}" ]; then
-        error "Device tree blob not found at ${DTB_FILE}. Build it first with --use-ayn-kernel"
+        error "Device tree blob not found at ${DTB_FILE}. Build it first with --dtb"
     fi
     
     if [ ! -f "assets/KERNEL" ]; then
-        error "Kernel not found at assets/KERNEL. Build it first with --use-ayn-kernel"
+        error "Kernel not found at assets/KERNEL. Build it first with --kernel"
     fi
-
+    
+    # Check for prepared rootfs
+    if [ ! -d "${ROOTFS_DIR}" ]; then
+        error "Prepared rootfs not found at ${ROOTFS_DIR}. Build it first with --rootfs"
+    fi
+    
     log "Starting image build process..."
-    log "Rootfs: ${ROOTFS_PATH}"
-    log "Setup Script: ${SETUP_SCRIPT}"
+    log "Using prepared rootfs: ${ROOTFS_DIR}"
     log "Output Image: ${IMAGE_NAME}"
 
     # Purge and recreate working directory to avoid conflicts
     log "Purging build directory to ensure clean build..."
     # Unmount any leftover mounts from previous builds
     if [ -d "${WORKDIR}/rootfs" ]; then
-        sudo umount "${WORKDIR}/rootfs/proc" 2>/dev/null || true
-        sudo umount "${WORKDIR}/rootfs/sys" 2>/dev/null || true
-        sudo umount "${WORKDIR}/rootfs/dev/pts" 2>/dev/null || true
-        sudo umount "${WORKDIR}/rootfs/dev/shm" 2>/dev/null || true
-        sudo umount "${WORKDIR}/rootfs/dev/mqueue" 2>/dev/null || true
-        sudo umount "${WORKDIR}/rootfs/dev" 2>/dev/null || true
         sudo umount "${WORKDIR}/rootfs/boot" 2>/dev/null || true
         sudo umount "${WORKDIR}/rootfs" 2>/dev/null || true
     fi
@@ -249,19 +327,16 @@ build_image() {
     rm -rf "${WORKDIR}"
     mkdir -p "${WORKDIR}"
 
-    # Download rootfs if URL is provided
-    download_rootfs
-
     # Check for root privileges
     if [ "$(id -u)" -ne 0 ]; then
         error "This script requires root privileges for disk partitioning and mounting."
     fi
 
-    # 2. Create a blank disk image
+    # Create a blank disk image
     log "Creating a blank disk image of size ${IMAGE_SIZE}..."
     truncate -s "${IMAGE_SIZE}" "${WORKDIR}/${IMAGE_NAME}"
 
-    # 3. Partition the image (GPT with EFI System and Linux partitions)
+    # Partition the image (GPT with EFI System and Linux partitions)
     log "Partitioning the disk image..."
     sudo parted "${WORKDIR}/${IMAGE_NAME}" --script \
         mklabel gpt \
@@ -271,7 +346,7 @@ build_image() {
         name 1 THORBOOT \
         name 2 THORROOT
 
-    # 4. Set up loop device and create device mapper entries
+    # Set up loop device and create device mapper entries
     log "Setting up loop device..."
     LOOP_DEV=$(sudo losetup --find --show --partscan "${WORKDIR}/${IMAGE_NAME}")
     log "Loop device: ${LOOP_DEV}"
@@ -283,32 +358,30 @@ build_image() {
     PART1="/dev/mapper/${LOOP_NAME}p1"
     PART2="/dev/mapper/${LOOP_NAME}p2"
 
-    # 5. Format the partitions
+    # Format the partitions
     log "Formatting partitions..."
     sudo mkfs.vfat -F 32 -n THORBOOT "${PART1}"
     sudo mkfs.ext4 -L THORROOT "${PART2}"
 
-    # 6. Mount and extract rootfs
+    # Mount partitions
     MOUNT_DIR="${WORKDIR}/rootfs"
     mkdir -p "${MOUNT_DIR}"
     sudo mount "${PART2}" "${MOUNT_DIR}"
     sudo mkdir -p "${MOUNT_DIR}/boot"
     sudo mount "${PART1}" "${MOUNT_DIR}/boot"
 
-    log "Extracting rootfs to ${MOUNT_DIR}..."
-    sudo tar -xpf "${ROOTFS_PATH}" -C "${MOUNT_DIR}"
-
-    # Generate fstab
-    log "Generating fstab with partition labels..."
-    sudo tee "${MOUNT_DIR}/etc/fstab" > /dev/null << 'EOF'
-# /etc/fstab: static file system information
-#
-# <file system>       <mount point>  <type>  <options>              <dump> <pass>
-LABEL=THORROOT        /              ext4    defaults,noatime       0      1
-LABEL=THORBOOT        /boot          vfat    defaults,noatime       0      2
-EOF
-
-    log "fstab generated successfully"
+    # Copy prepared rootfs to mounted image
+    log "Copying prepared rootfs to image..."
+    sudo rsync -aAXv "${ROOTFS_DIR}/" "${MOUNT_DIR}/" \
+        --exclude='/boot/*' \
+        --exclude='/dev/*' \
+        --exclude='/proc/*' \
+        --exclude='/sys/*' \
+        --exclude='/tmp/*' \
+        --exclude='/run/*' \
+        --exclude='/mnt/*' \
+        --exclude='/media/*' \
+        --exclude='/lost+found'
 
     # Copy kernel and DTB to boot partition
     if [ -f "assets/KERNEL" ]; then
@@ -321,27 +394,7 @@ EOF
         sudo cp "assets/${DTB_NAME}.dtb" "${MOUNT_DIR}/boot/"
     fi
 
-    # 7. Set up qemu-user-static for chroot
-    log "Setting up qemu-user-static for chroot..."
-    sudo cp /usr/bin/qemu-aarch64-static "${MOUNT_DIR}/usr/bin/"
-
-    sudo mount --bind /proc "${MOUNT_DIR}/proc"
-    sudo mount --bind /sys "${MOUNT_DIR}/sys"
-    sudo mount --bind /dev "${MOUNT_DIR}/dev"
-
-    # Copy setup script into the chroot
-    if [ -n "${SETUP_SCRIPT}" ]; then
-        log "Copying setup script into chroot environment..."
-        sudo cp "${SETUP_SCRIPT}" "${MOUNT_DIR}/setup.sh"
-        sudo chmod +x "${MOUNT_DIR}/setup.sh"
-
-        # Chroot and run the setup script
-        sudo chroot "${MOUNT_DIR}" /bin/bash /setup.sh
-
-        log "Setup script finished."
-
-    fi
-    # 7.5. Install custom GRUB config if available
+    # Install custom GRUB config if available
     if [ -f "assets/custom-grub.cfg" ]; then
         log "Installing custom GRUB configuration..."
         # Replace {KERNELFILE} placeholder with actual kernel filename
@@ -351,24 +404,23 @@ EOF
         log "Custom GRUB config installed with kernel: ${KERNEL_FILE}"
     fi
 
-    # 8. Unmount and cleanup
+    # Unmount and cleanup
     log "Cleaning up..."
-    sudo rm "${MOUNT_DIR}/setup.sh"
-    sudo rm "${MOUNT_DIR}/usr/bin/qemu-aarch64-static"
-    sudo umount "${MOUNT_DIR}/proc" 2>/dev/null || true
-    sudo umount "${MOUNT_DIR}/sys" 2>/dev/null || true
-    sudo umount "${MOUNT_DIR}/dev" 2>/dev/null || true
     sudo umount "${MOUNT_DIR}/boot"
     sudo umount "${MOUNT_DIR}"
 
     sudo kpartx -d "${LOOP_DEV}"
     sudo losetup -d "${LOOP_DEV}"
 
-    log "Build complete! Image is located at ${WORKDIR}/${IMAGE_NAME}"
+    log ""
+    log "✅ Image build completed successfully!"
+    log "📍 Image location: ${WORKDIR}/${IMAGE_NAME}"
+    log "💾 Image size: $(du -h ${WORKDIR}/${IMAGE_NAME} | cut -f1)"
     log ""
     log "Next steps:"
-    log "  1. Test with: thor-vm ${WORKDIR}/${IMAGE_NAME}"
+    log "  1. Test with: thor-vm ${WORKDIR}/${IMAGE_NAME} --gui"
     log "  2. Flash to device or copy to SD card"
+    log ""
 }
 
 # --- Main Script ---
@@ -379,11 +431,12 @@ while [[ "$#" -gt 0 ]]; do
         # Build targets
         --kernel) BUILD_KERNEL=true ;;
         --dtb) BUILD_DTB=true ;;
+        --rootfs) BUILD_ROOTFS=true ;;
         --image) BUILD_IMAGE=true ;;
-        --all) BUILD_KERNEL=true; BUILD_DTB=true; BUILD_IMAGE=true ;;
+        --all) BUILD_KERNEL=true; BUILD_DTB=true; BUILD_ROOTFS=true; BUILD_IMAGE=true ;;
         
         # Image options
-        -r|--rootfs) ROOTFS_PATH="$2"; shift ;;
+        --rootfs-tar) ROOTFS_PATH="$2"; shift ;;
         -s|--setup-script) SETUP_SCRIPT="$2"; shift ;;
         -n|--name) IMAGE_NAME="$2"; shift ;;
         
@@ -399,12 +452,16 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Validate arguments based on what we're building
-if [ "$BUILD_IMAGE" = true ] && [ -z "${ROOTFS_PATH}" ]; then
-    error "Rootfs path or URL is required for image building. Use -r or --rootfs"
+if [ "$BUILD_ROOTFS" = true ] && [ -z "${ROOTFS_PATH}" ]; then
+    error "Rootfs tarball path or URL is required for rootfs preparation. Use --rootfs-tar <path>"
 fi
 
-if [ "$BUILD_KERNEL" = false ] && [ "$BUILD_DTB" = false ] && [ "$BUILD_IMAGE" = false ]; then
-    error "Nothing to build! Specify at least one target: --kernel, --dtb, --image, or --all"
+if [ "$BUILD_IMAGE" = true ] && [ "$BUILD_ROOTFS" = false ] && [ ! -d "${ROOTFS_DIR}" ]; then
+    error "Image building requires prepared rootfs. Either build it first with --rootfs, or use --all"
+fi
+
+if [ "$BUILD_KERNEL" = false ] && [ "$BUILD_DTB" = false ] && [ "$BUILD_ROOTFS" = false ] && [ "$BUILD_IMAGE" = false ]; then
+    error "Nothing to build! Specify at least one target: --kernel, --dtb, --rootfs, --image, or --all"
 fi
 
 # Execute build phases
@@ -414,6 +471,10 @@ log ""
 
 if [ "$BUILD_KERNEL" = true ] || [ "$BUILD_DTB" = true ]; then
     build_kernel
+fi
+
+if [ "$BUILD_ROOTFS" = true ]; then
+    build_rootfs
 fi
 
 if [ "$BUILD_IMAGE" = true ]; then
