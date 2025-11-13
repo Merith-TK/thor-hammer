@@ -23,13 +23,12 @@ DTB_NAME="qcs8550-ayn-thor"
 ARCH=arm64
 CROSS_COMPILE=aarch64-linux-gnu-
 
-# Build flags
-USE_AYN_KERNEL=false
-BUILD_KERNEL=true
-BUILD_DTB=true
+# Build flags - all opt-in now
+BUILD_KERNEL=false
+BUILD_DTB=false
+BUILD_IMAGE=false
 CLEAN_KERNEL=false
-REBUILD_KERNEL=false
-BUILD_IMAGE=true
+OVERWRITE=false
 
 # --- Functions ---
 
@@ -38,34 +37,24 @@ usage() {
     echo ""
     echo "Usage: $0 [options]"
     echo ""
-    echo "Image Build Options:"
-    echo "  -r, --rootfs <path|url>   Path or URL to the rootfs tarball"
-    echo "  -s, --setup-script <path> Path to the setup script (default: ${SETUP_SCRIPT})"
-    echo "  -n, --name <name>         Output image name (default: ${IMAGE_NAME})"
-    echo "  --no-image                Skip image building (kernel only)"
+    echo "Build Target Options (opt-in, specify what to build):"
+    echo "  --kernel                  Build kernel"
+    echo "  --dtb                     Build device tree blob"
+    echo "  --image                   Build disk image"
+    echo "  --all                     Build everything (kernel + dtb + image)"
     echo ""
-    echo "Kernel Build Options:"
-    echo "  --use-ayn-kernel          Build and use AYN Linux kernel"
-    echo "  --rebuild-kernel          Force rebuild kernel even if it exists"
-    echo "  --clean-kernel            Clean kernel build artifacts before building"
-    echo "  --skip-kernel             Skip kernel build, only build DTB"
-    echo "  --skip-dtb                Skip DTB build, only build kernel"
+    echo "Image Build Options:"
+    echo "  -r, --rootfs <path|url>   Path or URL to the rootfs tarball (required for --image)"
+    echo "  -s, --setup-script <path> Path to the setup script (runs in chroot)"
+    echo "  -n, --name <name>         Output image name (default: ${IMAGE_NAME})"
+    echo ""
+    echo "Build Modifiers:"
+    echo "  --overwrite               Overwrite existing artifacts (kernel/dtb/image)"
+    echo "  --clean                   Clean kernel build artifacts before building"
     echo ""
     echo "General Options:"
     echo "  -h, --help                Display this help message"
     echo ""
-    echo "Examples:"
-    echo "  # Build image only (use existing kernel)"
-    echo "  sudo $0 -r /path/to/rootfs.tar.gz"
-    echo ""
-    echo "  # Build kernel and image"
-    echo "  sudo $0 -r /path/to/rootfs.tar.gz --use-ayn-kernel"
-    echo ""
-    echo "  # Build kernel only (no image)"
-    echo "  $0 --use-ayn-kernel --no-image"
-    echo ""
-    echo "  # Rebuild kernel from scratch"
-    echo "  $0 --use-ayn-kernel --rebuild-kernel --clean-kernel --no-image"
     exit 1
 }
 
@@ -98,15 +87,15 @@ download_rootfs() {
 build_kernel() {
     log "=== Kernel Build Phase ==="
     
-    # Check if kernel/DTB already exist
-    if [ "$REBUILD_KERNEL" = false ]; then
+    # Check if kernel/DTB already exist (unless overwrite is set)
+    if [ "$OVERWRITE" = false ]; then
         if [ "$BUILD_KERNEL" = true ] && [ -f "$OUTPUT_DIR/KERNEL" ]; then
-            log "✅ Kernel already exists at $OUTPUT_DIR/KERNEL (use --rebuild-kernel to force)"
+            log "✅ Kernel already exists at $OUTPUT_DIR/KERNEL (use --overwrite to rebuild)"
             BUILD_KERNEL=false
         fi
         
         if [ "$BUILD_DTB" = true ] && [ -f "$OUTPUT_DIR/${DTB_NAME}.dtb" ]; then
-            log "✅ DTB already exists at $OUTPUT_DIR/${DTB_NAME}.dtb (use --rebuild-kernel to force)"
+            log "✅ DTB already exists at $OUTPUT_DIR/${DTB_NAME}.dtb (use --overwrite to rebuild)"
             BUILD_DTB=false
         fi
         
@@ -117,9 +106,23 @@ build_kernel() {
         fi
     fi
     
-    # Check if kernel source exists (only if we need to build something)
+    # Check if kernel source exists, clone if missing
     if [ ! -d "$KERNEL_SOURCE" ]; then
-        error "Kernel source not found at $KERNEL_SOURCE. Clone it first: git clone --depth=1 https://github.com/AYNTechnologies/linux.git /tmp/thor-kernel"
+        log "📥 Kernel source not found, cloning from GitHub..."
+        log "Repository: https://github.com/AYNTechnologies/linux.git"
+        log "Destination: $KERNEL_SOURCE"
+        
+        if ! command -v git &> /dev/null; then
+            error "git is not installed. Install it first: sudo pacman -S git"
+        fi
+        
+        git clone --depth=1 https://github.com/AYNTechnologies/linux.git "$KERNEL_SOURCE"
+        
+        if [ $? -ne 0 ]; then
+            error "Failed to clone kernel source"
+        fi
+        
+        log "✅ Kernel source cloned successfully"
     fi
 
     log "🔨 Building AYN Linux Kernel for ARM64..."
@@ -373,18 +376,20 @@ EOF
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
+        # Build targets
+        --kernel) BUILD_KERNEL=true ;;
+        --dtb) BUILD_DTB=true ;;
+        --image) BUILD_IMAGE=true ;;
+        --all) BUILD_KERNEL=true; BUILD_DTB=true; BUILD_IMAGE=true ;;
+        
         # Image options
         -r|--rootfs) ROOTFS_PATH="$2"; shift ;;
         -s|--setup-script) SETUP_SCRIPT="$2"; shift ;;
         -n|--name) IMAGE_NAME="$2"; shift ;;
-        --no-image) BUILD_IMAGE=false ;;
         
-        # Kernel options
-        --use-ayn-kernel) USE_AYN_KERNEL=true ;;
-        --rebuild-kernel) REBUILD_KERNEL=true ;;
-        --clean-kernel) CLEAN_KERNEL=true ;;
-        --skip-kernel) BUILD_KERNEL=false ;;
-        --skip-dtb) BUILD_DTB=false ;;
+        # Build modifiers
+        --overwrite) OVERWRITE=true ;;
+        --clean) CLEAN_KERNEL=true ;;
         
         # General
         -h|--help) usage ;;
@@ -398,8 +403,8 @@ if [ "$BUILD_IMAGE" = true ] && [ -z "${ROOTFS_PATH}" ]; then
     error "Rootfs path or URL is required for image building. Use -r or --rootfs"
 fi
 
-if [ "$USE_AYN_KERNEL" = false ] && [ "$BUILD_IMAGE" = false ]; then
-    error "Nothing to do! Specify --use-ayn-kernel to build kernel, or provide -r to build image"
+if [ "$BUILD_KERNEL" = false ] && [ "$BUILD_DTB" = false ] && [ "$BUILD_IMAGE" = false ]; then
+    error "Nothing to build! Specify at least one target: --kernel, --dtb, --image, or --all"
 fi
 
 # Execute build phases
@@ -407,9 +412,16 @@ log "Thor Hammer Build System"
 log "========================"
 log ""
 
-if [ "$USE_AYN_KERNEL" = true ]; then
+if [ "$BUILD_KERNEL" = true ] || [ "$BUILD_DTB" = true ]; then
     build_kernel
 fi
+
+if [ "$BUILD_IMAGE" = true ]; then
+    build_image
+fi
+
+log ""
+log "✅ All build phases completed successfully!"
 
 if [ "$BUILD_IMAGE" = true ]; then
     build_image
