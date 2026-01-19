@@ -13,7 +13,7 @@ pacman-key --populate archlinuxarm || echo "ARM keyring population failed, conti
 
 # Update package database
 echo "📦 Updating packages..."
-pacman -Syu --noconfirm
+pacman -Syu --noconfirm --disable-sandbox
 
 # Enable color output in pacman
 echo "🎨 Enabling color output in pacman..."
@@ -21,7 +21,7 @@ sed -i 's/^#Color/Color/' /etc/pacman.conf
 
 # Install essential packages (required for boot and basic functionality)
 echo "🛠️  Installing essential packages..."
-pacman -S --noconfirm \
+pacman -S --noconfirm --disable-sandbox\
     base \
     efibootmgr \
     networkmanager \
@@ -29,7 +29,7 @@ pacman -S --noconfirm \
 
 # Install non-essential packages (development tools and utilities)
 echo "📦 Installing non-essential packages..."
-pacman -S --noconfirm \
+pacman -S --noconfirm --disable-sandbox\
     base-devel \
     openssh \
     nano \
@@ -88,7 +88,7 @@ build_package() {
     }
     
     # Install the package
-    pacman -U --noconfirm *.pkg.tar.* || {
+    pacman -U --noconfirm --disable-sandbox *.pkg.tar.* || {
         echo "❌ Failed to install $pkg_name"
         return 1
     }

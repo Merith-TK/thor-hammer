@@ -53,17 +53,27 @@ func BuildRootfs() error {
 		}
 	}
 
-	// Clean and create rootfs dir
-	if _, err := os.Stat(RootfsDir); err == nil {
-		log("Removing old rootfs...")
-		os.RemoveAll(RootfsDir)
+	// Check if rootfs already exists and has content
+	rootfsExists := false
+	if info, err := os.Stat(RootfsDir); err == nil && info.IsDir() {
+		entries, _ := os.ReadDir(RootfsDir)
+		if len(entries) > 0 {
+			log("Using existing rootfs: %s", RootfsDir)
+			log("Run 'mage buildClean' to force fresh extraction")
+			rootfsExists = true
+		}
 	}
-	os.MkdirAll(RootfsDir, 0755)
 
-	// Extract
-	log("Extracting rootfs...")
-	if err := extractTarGz(tarPath, RootfsDir); err != nil {
-		return err
+	// Extract if needed
+	if !rootfsExists {
+		// Create rootfs dir
+		os.MkdirAll(RootfsDir, 0755)
+
+		// Extract
+		log("Extracting rootfs...")
+		if err := extractTarGz(tarPath, RootfsDir); err != nil {
+			return err
+		}
 	}
 
 	// Generate fstab
@@ -193,14 +203,27 @@ func BuildImage() error {
 // Cleanup
 // =============================================================================
 
-// Clean removes build artifacts
+// Clean removes build artifacts (image and mounts, preserves rootfs)
 func Clean() error {
 	log("🧹 Cleaning build artifacts...")
 	sh.Run("umount", filepath.Join(WorkDir, "mnt", "boot"))
 	sh.Run("umount", filepath.Join(WorkDir, "mnt"))
 	cleanupLoops(ImageFile)
-	os.RemoveAll(WorkDir)
+	os.Remove(ImageFile)
+	os.RemoveAll(filepath.Join(WorkDir, "mnt"))
 	success("Clean complete")
+	return nil
+}
+
+// BuildClean removes rootfs and forces fresh extraction on next build
+func BuildClean() error {
+	if err := ensureRoot(); err != nil {
+		return err
+	}
+
+	log("🧹 Cleaning rootfs for fresh extraction...")
+	os.RemoveAll(RootfsDir)
+	success("Rootfs removed - next build will extract fresh")
 	return nil
 }
 
@@ -276,20 +299,38 @@ func runInChroot(rootfsDir, scriptOrCmd string) error {
 		}
 	}()
 
-	// Copy script if it's a file
+	// Determine if scriptOrCmd is a local script file to copy, or a command in the chroot
 	var chrootCmd []string
-	if _, err := os.Stat(scriptOrCmd); err == nil {
-		scriptName := filepath.Base(scriptOrCmd)
-		destScript := filepath.Join(rootfsDir, scriptName)
-		sh.Run("cp", scriptOrCmd, destScript)
-		sh.Run("chmod", "+x", destScript)
-		defer os.Remove(destScript)
-		chrootCmd = []string{rootfsDir, "/bin/bash", "/" + scriptName}
+
+	// If it's a relative path or in scripts/, it's a file to copy
+	if !strings.HasPrefix(scriptOrCmd, "/") || strings.Contains(scriptOrCmd, "scripts/") {
+		if info, err := os.Stat(scriptOrCmd); err == nil && !info.IsDir() {
+			// It's a script file - copy and execute
+			scriptName := filepath.Base(scriptOrCmd)
+			destScript := filepath.Join(rootfsDir, scriptName)
+			sh.Run("cp", scriptOrCmd, destScript)
+			sh.Run("chmod", "+x", destScript)
+			defer os.Remove(destScript)
+			chrootCmd = []string{rootfsDir, "/bin/bash", "/" + scriptName}
+		} else {
+			// File doesn't exist
+			return fmt.Errorf("script not found: %s", scriptOrCmd)
+		}
 	} else {
-		chrootCmd = []string{rootfsDir, scriptOrCmd}
+		// It's an absolute path (like /bin/bash) - execute directly in chroot
+		// For interactive shells, add -i flag
+		if scriptOrCmd == "/bin/bash" || scriptOrCmd == "/bin/sh" {
+			chrootCmd = []string{rootfsDir, scriptOrCmd, "-i"}
+		} else {
+			chrootCmd = []string{rootfsDir, scriptOrCmd}
+		}
 	}
 
 	cmd = exec.Command("arch-chroot", chrootCmd...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "PS1=[\\u@\\h \\W]\\$ ")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
