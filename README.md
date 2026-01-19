@@ -6,7 +6,8 @@ Builds bootable ARM64 disk images from rootfs tarballs. Built for the AYN Thor b
 
 Takes a rootfs tarball (Arch Linux ARM, Alpine, Debian, etc.) and creates a bootable disk image with:
 - GPT partitioning (512MB boot + 3.5GB root)
-- GRUB bootloader
+- Thor-optimized kernel and firmware (from Kitsumi/ayn-thor-arch)
+- GRUB bootloader with device tree support
 - Your chosen OS installed and configured
 
 ## Requirements
@@ -21,11 +22,11 @@ Takes a rootfs tarball (Arch Linux ARM, Alpine, Debian, etc.) and creates a boot
 ```bash
 # Open project in VS Code Dev Container
 
-# Build with AYN kernel
-sudo thor-build -r assets/ArchLinuxARM-aarch64-latest.tar.gz --use-ayn-kernel
+# Build Arch Linux ARM image
+sudo thor-build -r assets/ArchLinuxARM-aarch64-latest.tar.gz
 
 # Or use the direct path
-sudo ./scripts/thor-build.sh -r assets/ArchLinuxARM-aarch64-latest.tar.gz --use-ayn-kernel
+sudo ./scripts/thor-build.sh -r assets/ArchLinuxARM-aarch64-latest.tar.gz
 
 # Output: build/thor-hammer.img
 ```
@@ -47,9 +48,6 @@ thor-build -r <rootfs> [options]
 # Common options:
 #   -r, --rootfs <path>      Path to rootfs tarball (required)
 #   -n, --name <name>        Output image name
-#   --use-ayn-kernel         Build AYN Linux kernel
-#   --rebuild-kernel         Force kernel rebuild
-#   --no-image              Build kernel only
 
 # See all options
 thor-build --help
@@ -84,3 +82,4 @@ For detailed usage, see [QUICKSTART.md](QUICKSTART.md)
 - Root partition is ext4 with full OS
 - Images are built using QEMU user-mode emulation
 - Setup scripts run inside chroot to configure the system
+- Thor-specific packages (kernel, firmware, GRUB) are automatically built from [Kitsumi/ayn-thor-arch](https://github.com/Kitsumi/ayn-thor-arch) during setup

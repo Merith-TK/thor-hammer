@@ -23,10 +23,6 @@ sed -i 's/^#Color/Color/' /etc/pacman.conf
 echo "🛠️  Installing essential packages..."
 pacman -S --noconfirm \
     base \
-    linux \
-    linux-aarch64 \
-    linux-firmware \
-    grub \
     efibootmgr \
     networkmanager \
     sudo
@@ -51,6 +47,69 @@ systemctl enable NetworkManager
 # Enable SSH
 echo "🔒 Enabling SSH service..."
 systemctl enable sshd
+
+# Build and install Ayn Thor packages
+echo "🔨 Building and installing Ayn Thor-specific packages..."
+echo "  -> Cloning ayn-thor-arch repository..."
+
+# Create a temporary working directory
+mkdir -p /tmp/thor-build
+cd /tmp/thor-build
+
+# Clone the repository
+git clone --depth 1 https://github.com/Kitsumi/ayn-thor-arch.git || {
+    echo "❌ Failed to clone repository"
+    exit 1
+}
+
+cd ayn-thor-arch/packages
+
+# Function to build and install a package as a regular user
+build_package() {
+    local pkg_dir="$1"
+    local pkg_name="$2"
+    
+    echo "  -> Building $pkg_name..."
+    cd "$pkg_dir"
+    
+    # Create temporary user for building (makepkg doesn't allow root)
+    if ! id builder &>/dev/null; then
+        useradd -m -G wheel builder
+        echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
+    fi
+    
+    # Change ownership to builder user
+    chown -R builder:builder /tmp/thor-build
+    
+    # Build the package as builder user
+    su - builder -c "cd /tmp/thor-build/ayn-thor-arch/packages/$pkg_dir && makepkg -s --noconfirm" || {
+        echo "❌ Failed to build $pkg_name"
+        return 1
+    }
+    
+    # Install the package
+    pacman -U --noconfirm *.pkg.tar.* || {
+        echo "❌ Failed to install $pkg_name"
+        return 1
+    }
+    
+    cd ..
+    echo "  ✅ $pkg_name installed successfully"
+}
+
+# Build and install packages in order
+build_package "linux-firmware-ayn-thor" "Thor firmware" && \
+build_package "linux-ayn-thor" "Thor kernel" && \
+build_package "grub-dtb" "GRUB with device tree support"
+
+# Clean up
+echo "  -> Cleaning up build artifacts..."
+cd /
+rm -rf /tmp/thor-build
+userdel -r builder 2>/dev/null || true
+rm -f /etc/sudoers.d/builder
+
+echo "✅ Ayn Thor packages built and installed"
 
 # Create a user account
 echo "👤 Creating user 'thor'..."
@@ -86,11 +145,20 @@ echo "🔐 Setting default passwords..."
 echo "root:thor-hammer" | chpasswd
 echo "thor:thor-hammer" | chpasswd
 
+# Generate initramfs with Thor firmware
+echo "🔧 Generating initramfs with Thor firmware..."
+mkinitcpio -P || echo "⚠️  mkinitcpio generation had warnings"
+
 # Configure GRUB
-echo "🚀 Installing GRUB bootloader..."
-# Install GRUB to the boot partition (config will be installed by build script)
-grub-install --target=arm64-efi --efi-directory=/boot --bootloader-id=GRUB --removable --recheck || echo "⚠️  GRUB install failed"
-echo "  -> GRUB installed (configuration will be added by build script)"
+echo "🚀 Configuring GRUB bootloader..."
+# GRUB is already installed via grub-dtb package above
+# Install GRUB to the boot partition
+grub-install --target=arm64-efi --efi-directory=/boot --bootloader-id=GRUB --removable --recheck || echo "⚠️  GRUB install had warnings"
+
+# Generate GRUB configuration
+echo "  -> Generating GRUB configuration..."
+grub-mkconfig -o /boot/grub/grub.cfg || echo "⚠️  GRUB config generation had warnings"
+echo "  ✅ GRUB configured"
 
 # Create a basic motd
 cat > /etc/motd << 'EOF'
@@ -116,6 +184,7 @@ echo "  - User 'thor' created (password: thor-hammer)"
 echo "  - Root password: thor-hammer" 
 echo "  - NetworkManager and SSH enabled"
 echo "  - Essential packages installed"
-echo "  - GRUB configured"
+echo "  - Thor-specific kernel, firmware, and bootloader installed"
+echo "  - GRUB configured with device tree support"
 echo ""
 echo "🔒 SECURITY NOTE: Change default passwords on first boot!"

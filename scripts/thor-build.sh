@@ -396,12 +396,18 @@ build_image() {
 
     # Install custom GRUB config if available
     if [ -f "assets/custom-grub.cfg" ]; then
-        log "Installing custom GRUB configuration..."
-        # Replace {KERNELFILE} placeholder with actual kernel filename
-        sudo cp "assets/custom-grub.cfg" "${MOUNT_DIR}/boot/grub/grub.cfg.tmp"
-        sudo sed -i "s/{KERNELFILE}/${KERNEL_FILE}/g" "${MOUNT_DIR}/boot/grub/grub.cfg.tmp"
-        sudo mv "${MOUNT_DIR}/boot/grub/grub.cfg.tmp" "${MOUNT_DIR}/boot/grub/grub.cfg"
-        log "Custom GRUB config installed with kernel: ${KERNEL_FILE}"
+        # Check if GRUB is installed in rootfs
+        if [ -d "${MOUNT_DIR}/boot/grub" ]; then
+            log "Installing custom GRUB configuration..."
+            # Replace {KERNELFILE} placeholder with actual kernel filename
+            sudo cp "assets/custom-grub.cfg" "${MOUNT_DIR}/boot/grub/grub.cfg.tmp"
+            sudo sed -i "s/{KERNELFILE}/${KERNEL_FILE}/g" "${MOUNT_DIR}/boot/grub/grub.cfg.tmp"
+            sudo mv "${MOUNT_DIR}/boot/grub/grub.cfg.tmp" "${MOUNT_DIR}/boot/grub/grub.cfg"
+            log "Custom GRUB config installed with kernel: ${KERNEL_FILE}"
+        else
+            log "⚠️  GRUB not installed in rootfs, skipping GRUB config installation"
+            log "   Install GRUB in rootfs via thor-chroot first, or use a setup script"
+        fi
     fi
 
     # Unmount and cleanup
