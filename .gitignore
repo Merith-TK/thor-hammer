@@ -53,6 +53,7 @@ configs/device_*.conf
 # Extracted rootfs directories
 rootfs/
 sysroot/
+build/
 
 # Cross-compilation toolchain
 toolchain/

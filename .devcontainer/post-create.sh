@@ -109,6 +109,8 @@ mkdir -p /workspaces/.thor-hammer/{logs,downloads,toolchain} 2>/dev/null || true
 echo "🔧 Installing Mage build tool..."
 if command -v go >/dev/null 2>&1; then
     go install github.com/magefile/mage@latest
+    # Install system-wide so sudo can find it
+    sudo cp ~/go/bin/mage /usr/local/bin/mage 2>/dev/null || true
     echo "✅ Mage installed successfully"
 else
     echo "⚠️  Go not found, skipping Mage installation"

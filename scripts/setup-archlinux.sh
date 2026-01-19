@@ -12,8 +12,8 @@ pacman-key --init || echo "Keyring init failed, continuing..."
 pacman-key --populate archlinuxarm || echo "ARM keyring population failed, continuing..."
 
 # Update package database
-echo "📦 Updating package database..."
-pacman -Sy --noconfirm
+echo "📦 Updating packages..."
+pacman -Syu --noconfirm
 
 # Enable color output in pacman
 echo "🎨 Enabling color output in pacman..."
