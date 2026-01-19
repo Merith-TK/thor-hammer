@@ -6,8 +6,9 @@ set -e
 
 echo "🔨 Thor Hammer - Setting up development container..."
 
-# Update package database
-sudo pacman -Sy
+# Update container packages
+echo "🔄 Updating packages..."
+sudo pacman -Syu --noconfirm
 
 # Install essential development tools
 echo "📦 Installing development tools..."
@@ -21,6 +22,7 @@ sudo pacman -S --noconfirm \
     nano \
     htop \
     tree \
-    jq
+    jq \
+    go
 
 echo "✅ Container creation setup completed!"

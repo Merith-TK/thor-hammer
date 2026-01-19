@@ -17,12 +17,33 @@ Takes a rootfs tarball (Arch Linux ARM, Alpine, Debian, etc.) and creates a boot
 
 ## Usage
 
-### Build an Image
+### Quick Start with Mage (Recommended)
 
 ```bash
 # Open project in VS Code Dev Container
 
-# Build Arch Linux ARM image
+# List all available targets
+mage -l
+
+# Build kernel and device tree
+sudo mage build:kernelAll
+
+# Test VM
+mage vm:start              # Console mode (Ctrl+A then X to exit)
+mage vm:gui                # GUI mode
+
+# Mount/unmount images
+sudo mage image:mount
+sudo mage image:unmount
+
+# Chroot into rootfs
+sudo mage dev:chroot
+```
+
+### Build an Image (Bash - Partial Migration)
+
+```bash
+# Build Arch Linux ARM image (still using bash for full builds)
 sudo thor-build -r assets/ArchLinuxARM-aarch64-latest.tar.gz
 
 # Or use the direct path
@@ -53,21 +74,30 @@ thor-build -r <rootfs> [options]
 thor-build --help
 ```
 
-## Useful Commands
+## Available Commands
 
+### Mage Targets (Go-based build system)
 ```bash
-# Test image in QEMU
-thor-vm                    # Console mode (Ctrl+A then X to exit)
-thor-vm --gui              # GUI mode
-
-# Chroot into image (modify without booting)
-sudo thor-chroot
-
-# Mount image to inspect files
-sudo ./scripts/mount-image.sh
-# Files at: /tmp/thor-mount/boot/ and /tmp/thor-mount/root/
-sudo ./scripts/unmount-image.sh
+mage -l                    # List all targets
+mage vm:start              # Boot VM (console)
+mage vm:gui                # Boot VM (GUI)
+mage build:kernel          # Build kernel
+mage build:dtb             # Build device tree blob
+mage build:kernelAll       # Build kernel + DTB
+sudo mage image:mount      # Mount image
+sudo mage image:unmount    # Unmount image
+sudo mage dev:chroot       # Enter chroot
+mage clean                 # Clean artifacts
 ```
+
+### Bash Scripts (Legacy/Partial)
+```bash
+# Full image building (not yet migrated to Mage)
+thor-build -r <rootfs>     # Build complete image
+thor-build --help          # See all options
+```
+
+See [MAGE_USAGE.md](MAGE_USAGE.md) for complete documentation.
 
 For detailed usage, see [QUICKSTART.md](QUICKSTART.md)
 

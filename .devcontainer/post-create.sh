@@ -52,7 +52,7 @@ cat >> ~/.bashrc << 'EOF'
 export THOR_HAMMER_ROOT="/workspaces/.thor-hammer"
 export CROSS_COMPILE="aarch64-linux-gnu-"
 export ARCH="arm64"
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/go/bin:$HOME/.local/bin:$PATH"
 
 # Cross-compilation helpers
 export KBUILD_BUILD_USER="thor-hammer"
@@ -66,8 +66,6 @@ alias l='ls -CF --color=auto'
 alias grep='grep --color=auto'
 alias thor-cd='cd $THOR_HAMMER_ROOT'
 alias thor-build='$THOR_HAMMER_ROOT/scripts/thor-build.sh'
-alias thor-chroot='$THOR_HAMMER_ROOT/scripts/thor-chroot.sh'
-alias thor-vm='$THOR_HAMMER_ROOT/scripts/thor-vm.sh'
 alias thor-logs='tail -f $THOR_HAMMER_ROOT/logs/*.log 2>/dev/null || echo "No logs found"'
 
 # Function to check cross-compiler
@@ -93,10 +91,9 @@ thor-status() {
     echo "📋 Available commands:"
     echo "  thor-cd            - Go to workspace root"
     echo "  thor-build         - Build kernel and/or image"
-    echo "  thor-chroot        - Enter chroot in built image"
-    echo "  thor-vm            - Boot image in QEMU"
     echo "  thor-logs          - View development logs"
     echo "  check-crossgcc     - Verify cross-compiler setup"
+    echo "  mage -l            - List all Mage build targets"
 }
 
 # Show status on terminal start
@@ -107,6 +104,23 @@ EOF
 
 # Create project directories
 mkdir -p /workspaces/.thor-hammer/{logs,downloads,toolchain} 2>/dev/null || true
+
+# Install Mage build tool
+echo "🔧 Installing Mage build tool..."
+if command -v go >/dev/null 2>&1; then
+    go install github.com/magefile/mage@latest
+    echo "✅ Mage installed successfully"
+else
+    echo "⚠️  Go not found, skipping Mage installation"
+fi
+
+# Initialize Go modules for Thor Hammer
+if [ -f "/workspaces/.thor-hammer/go.mod" ]; then
+    echo "📦 Initializing Go modules..."
+    cd /workspaces/.thor-hammer
+    go mod download
+    echo "✅ Go modules ready"
+fi
 
 # Set up ccache for faster compilation
 if command -v ccache >/dev/null 2>&1; then

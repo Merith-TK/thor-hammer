@@ -49,7 +49,8 @@
     "CROSS_COMPILE": "aarch64-linux-gnu-",
     "ARCH": "arm64",
     "KBUILD_BUILD_USER": "thor-hammer",
-    "KBUILD_BUILD_HOST": "devcontainer"
+    "KBUILD_BUILD_HOST": "devcontainer",
+    "PATH": "${containerEnv:HOME}/go/bin:${containerEnv:PATH}"
   },
   
   // Mounts for persistent data
